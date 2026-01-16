@@ -4,17 +4,14 @@ import numpy as np
 from datetime import datetime
 import io
 
-# Configuración inicial
 st.set_page_config(page_title="Tracking BOL02", layout="wide")
 
-# Título
 st.title("Tracking BOL02")
 
-# URL desde secrets (como en la otra app)
 URL_BOL2_TRACKING = st.secrets["URL_BOL2_TRACKING"]
 
-# Función para cargar datos desde URL
-@st.cache_data(ttl=300)  # Cache por 5 minutos
+@st.cache_data(ttl=300)  
+
 def cargar_datos_desde_url(url):
 
     try:
@@ -30,8 +27,7 @@ def cargar_datos_desde_url(url):
                 
                 if col == 'FECHA_INGRESO':
                     df[col] = df[col].apply(
-                        lambda x: pd.NaT if pd.isnull(x) or x == pd.Timestamp("1900-01-01") else x
-                    )
+                        lambda x: pd.NaT if pd.isnull(x) or x == pd.Timestamp("1900-01-01") else x)
         
         text_columns = ['ORIGEN', 'NP', 'NP_ACEPTADA', 'DESCRIPCION', 'MOD', 'STATUS', 
                        'CLIENTE', 'SOLICITADO', 'REFERENCIA', 'ESTADO']
@@ -103,7 +99,7 @@ def main():
         st.error("No se pudieron cargar los datos. Verifica la URL en los secrets.")
         return
     
-    st.sidebar.header("📊 Información del Dataset")
+    st.sidebar.header("📊 Información")
     st.sidebar.write(f"**Total de registros:** {len(df):,}")
     st.sidebar.write(f"**Referencias únicas:** {df['REFERENCIA'].nunique()}")
     st.sidebar.write(f"**NPs únicos:** {df['NP'].nunique()}")
@@ -114,12 +110,7 @@ def main():
         st.sidebar.subheader("📈 Distribución por Estado")
         for estado, count in estado_counts.head(5).items():
             st.sidebar.write(f"• {estado}: {count}")
-    
-    with st.expander("🔍 Vista previa del dataset completo (primeros 10 registros)"):
-        df_preview = formatear_fechas_df(df.head(10))
-        st.dataframe(df_preview)
-        st.caption(f"Mostrando 10 de {len(df)} registros totales")
-    
+        
     st.header("🔍 Búsqueda de Pedidos")
     st.markdown("Usa al menos uno de los siguientes filtros para buscar:")
     
@@ -179,6 +170,7 @@ def main():
                     st.session_state.mostrar_resultados = False
     
     if 'mostrar_resultados' in st.session_state and st.session_state.mostrar_resultados:
+
         if 'resultados_filtrados' in st.session_state and st.session_state.resultados_filtrados is not None:
             resultados = st.session_state.resultados_filtrados
             
@@ -237,16 +229,7 @@ def main():
                         help=f"Descargar {len(resultados)} registro(s) en formato CSV",
                         use_container_width=True,
                         type="secondary")
-                
-                with st.expander("📊 Información de la descarga"):
-                    st.write(f"**Registros a descargar:** {len(resultados)}")
-                    st.write(f"**Columnas incluidas:** {len(resultados.columns)}")
-                    st.write("**Lista de columnas:**")
-                    for col in resultados.columns:
-                        st.write(f"• {col}")
-                    
-                    st.write(f"**Tamaño estimado:** {(len(csv_data) / 1024):.2f} KB")
-                    
+                                    
             elif len(resultados) == len(df):
                 st.warning("""
                 ⚠️ **No se permite descargar el dataset completo**
@@ -268,12 +251,7 @@ def main():
     **Restricciones:**
     • No se permiten búsquedas vacías
     • No se puede descargar el dataset completo
-    
-    **Campos disponibles:**
-    • REFERENCIA: Código único del pedido
-    • NP: Número de Parte
-    • CLIENTE: Nombre del cliente
-    """)
+       """)
     
     # Footer
     st.divider()
