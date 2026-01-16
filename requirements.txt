@@ -1,0 +1,5 @@
+streamlit
+ipython
+xlsxwriter
+openpyxl
+numpy
