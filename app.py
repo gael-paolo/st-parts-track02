@@ -9,10 +9,10 @@ st.title("Tracking BOL02")
 URL_BOL2_TRACKING = st.secrets["URL_BOL2_TRACKING"]
 
 # ======================================================
-# CARGA DE DATOS
+# CARGA DE DATOS (cache invalidado por versión)
 # ======================================================
 @st.cache_data(ttl=300)
-def cargar_datos_desde_url(url):
+def cargar_datos_desde_url(url, version="v3"):
     df = pd.read_csv(url)
 
     df = df.replace(
@@ -23,11 +23,7 @@ def cargar_datos_desde_url(url):
     date_columns = ['ETD', 'SHIP_DATE', 'FECHA_INGRESO', 'FECHA_SOLICITADO']
     for col in date_columns:
         if col in df.columns:
-            df[col] = pd.to_datetime(
-                df[col],
-                errors="coerce",
-                dayfirst=True
-            )
+            df[col] = pd.to_datetime(df[col], errors="coerce")
 
     text_columns = [
         'ORIGEN', 'NP', 'NP_ACEPTADA', 'DESCRIPCION', 'MOD',
@@ -40,14 +36,14 @@ def cargar_datos_desde_url(url):
     return df
 
 # ======================================================
-# FILTROS
+# PREPARACIÓN Y FILTRO
 # ======================================================
 def preparar_datos(df):
-    df = df.copy()
+    df_clean = df.copy()
     for col in ['REFERENCIA', 'NP', 'CLIENTE']:
-        if col in df.columns:
-            df[col] = df[col].fillna('').astype(str).str.strip()
-    return df
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].fillna('').astype(str).str.strip()
+    return df_clean
 
 def filtrar_datos(df, referencia, np, cliente):
     if referencia:
@@ -59,7 +55,7 @@ def filtrar_datos(df, referencia, np, cliente):
     return df
 
 # ======================================================
-# FORMATEO DE FECHAS (FIX DEFINITIVO)
+# FORMATEO DE FECHAS
 # ======================================================
 def formatear_fechas_df(df):
     df_display = df.copy()
@@ -67,14 +63,11 @@ def formatear_fechas_df(df):
     def format_fecha_ingreso(x):
         if pd.isnull(x):
             return "Pendiente"
-
         fecha = pd.to_datetime(x, errors="coerce")
         if pd.isnull(fecha):
             return "Pendiente"
-
         if fecha.date() == pd.Timestamp("1900-01-01").date():
             return "Pendiente"
-
         return fecha.strftime("%d/%m/%Y")
 
     for col in ['ETD', 'SHIP_DATE', 'FECHA_SOLICITADO']:
@@ -104,10 +97,18 @@ def convertir_xlsx(df):
 # APP
 # ======================================================
 def main():
-    df = cargar_datos_desde_url(URL_BOL2_TRACKING)
+    with st.spinner("Cargando datos..."):
+        df = cargar_datos_desde_url(URL_BOL2_TRACKING, version="v3")
+
+    if df.empty:
+        st.error("No se pudieron cargar los datos.")
+        return
 
     st.sidebar.header("📊 Información")
-    st.sidebar.write(f"Total registros: {len(df)}")
+    st.sidebar.write(f"Total de registros: {len(df)}")
+    st.sidebar.write(f"Referencias únicas: {df['REFERENCIA'].nunique()}")
+    st.sidebar.write(f"NPs únicos: {df['NP'].nunique()}")
+    st.sidebar.write(f"Clientes únicos: {df['CLIENTE'].nunique()}")
 
     st.header("🔍 Búsqueda de Pedidos")
     col1, col2, col3 = st.columns(3)
@@ -116,44 +117,62 @@ def main():
     np = col2.text_input("NP")
     cliente = col3.text_input("Cliente")
 
-    if st.button("🔎 Buscar", type="primary", use_container_width=True):
-        if not any([referencia, np, cliente]):
-            st.warning("Debes ingresar al menos un criterio")
-            return
+    buscar = st.button("🔎 Buscar", type="primary", use_container_width=True)
 
-        df_filtrado = filtrar_datos(preparar_datos(df), referencia, np, cliente)
+    if buscar:
+        if not any([referencia.strip(), np.strip(), cliente.strip()]):
+            st.warning("Debes ingresar al menos un criterio de búsqueda")
+            st.session_state.mostrar_resultados = False
+        else:
+            df_filtrado = filtrar_datos(
+                preparar_datos(df),
+                referencia.strip(),
+                np.strip(),
+                cliente.strip()
+            )
 
-        if df_filtrado.empty:
-            st.warning("No se encontraron resultados")
-            return
+            if df_filtrado.empty:
+                st.warning("No se encontraron resultados")
+                st.session_state.mostrar_resultados = False
+            else:
+                st.session_state.resultados = df_filtrado
+                st.session_state.mostrar_resultados = True
+                st.success(f"Se encontraron {len(df_filtrado)} registros")
 
-        st.success(f"Se encontraron {len(df_filtrado)} registros")
+    if st.session_state.get("mostrar_resultados", False):
+        resultados = st.session_state.resultados
+        resultados_display = formatear_fechas_df(resultados)
 
-        df_display = formatear_fechas_df(df_filtrado)
+        st.header("📋 Resultados")
+        st.dataframe(
+            resultados_display,
+            use_container_width=True,
+            hide_index=True
+        )
 
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-        if len(df_filtrado) < len(df):
+        if 0 < len(resultados) < len(df):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
             col_dl1, col_dl2 = st.columns(2)
+
             with col_dl1:
                 st.download_button(
                     "📄 Descargar CSV",
-                    convertir_csv(df_filtrado),
+                    convertir_csv(resultados),
                     f"resultados_{timestamp}.csv",
                     "text/csv"
                 )
+
             with col_dl2:
                 st.download_button(
                     "📊 Descargar XLSX",
-                    convertir_xlsx(df_display),
+                    convertir_xlsx(resultados_display),
                     f"resultados_{timestamp}.xlsx",
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
 
     st.divider()
     st.caption("© 2026 Tracking GJ")
+    st.caption(f"Última actualización: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
 
 if __name__ == "__main__":
     main()
