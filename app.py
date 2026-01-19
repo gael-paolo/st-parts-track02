@@ -67,14 +67,20 @@ def formatear_fechas_df(df):
     def format_fecha_ingreso(x):
         if pd.isnull(x):
             return "Pendiente"
-        if isinstance(x, pd.Timestamp) and x.year <= 1900:
+
+        fecha = pd.to_datetime(x, errors="coerce")
+        if pd.isnull(fecha):
             return "Pendiente"
-        return x.strftime("%d/%m/%Y")
+
+        if fecha.date() == pd.Timestamp("1900-01-01").date():
+            return "Pendiente"
+
+        return fecha.strftime("%d/%m/%Y")
 
     for col in ['ETD', 'SHIP_DATE', 'FECHA_SOLICITADO']:
         if col in df_display.columns:
             df_display[col] = df_display[col].apply(
-                lambda x: x.strftime("%d/%m/%Y") if pd.notnull(x) else ""
+                lambda x: pd.to_datetime(x).strftime("%d/%m/%Y") if pd.notnull(x) else ""
             )
 
     if 'FECHA_INGRESO' in df_display.columns:
