@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from io import BytesIO
 
 # =========================
 # CONFIGURACIÓN
@@ -129,11 +130,22 @@ buscar = st.button("Buscar")
 # =========================
 # PROCESAMIENTO
 # =========================
+
+def convertir_a_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Reporte')
+    return output.getvalue()
+
 if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
-            df1 = df1[df1['CHANNEL']=='BOL02']
+
+            # Filtro robusto por canal
+            if 'CHANNEL' in df1.columns:
+                df1 = df1[df1['CHANNEL'] == 'BOL02']
+
             df2 = cargar_datos(URL_REFRESH)
 
             df = pd.concat([df1, df2], ignore_index=True)
@@ -147,10 +159,26 @@ if buscar and valor:
 
                 df_filtrado = validar_estado_pedidos(df_filtrado)
 
+                # 👉 Copia para exportar (mantiene fechas reales)
+                df_export = df_filtrado.copy()
+
+                # 👉 Formato solo para visualización
                 df_filtrado["ETA_LP"] = df_filtrado["ETA_LP"].dt.strftime("%Y/%m/%d")
 
                 st.subheader(f"Resultados para {campo}: {valor}")
                 st.dataframe(df_filtrado.drop(columns=["NP_ACCEPTED"], errors="ignore"))
+
+                # =========================
+                # BOTÓN DESCARGA
+                # =========================
+                excel_data = convertir_a_excel(df_export)
+
+                st.download_button(
+                    label="Descargar Excel",
+                    data=excel_data,
+                    file_name="tracking_pedidos.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
 
             else:
                 st.warning("No se encontraron resultados.")
