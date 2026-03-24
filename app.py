@@ -55,7 +55,7 @@ def cargar_datos(url):
             df[c] = pd.to_datetime(df[c], errors="coerce")
 
     columnas_finales = [
-        'TYPE', 'VIA', 'SOLICITED', 'REFERENCE', 'CLIENT', 'NP',
+        'TYPE', 'VIA', 'CHANNEL', 'REFERENCE', 'CLIENT', 'NP',
         'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS', 
         'INVOICE', 'ETD', 'SHIP_DATE', 'ARRIVAL_DATE', 'ENTRY_DATE',
         'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY'
