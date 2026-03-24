@@ -17,8 +17,11 @@ st.header("Consulta Pedidos Reservados")
 if "modo_busqueda" not in st.session_state:
     st.session_state.modo_busqueda = "REFERENCE"
 
+if "df_resultado" not in st.session_state:
+    st.session_state.df_resultado = None
+
 # =========================
-# BOTONES DE SELECCIÓN
+# BOTONES DE MODO
 # =========================
 col1, col2, col3 = st.columns(3)
 
@@ -34,6 +37,8 @@ with col3:
     if st.button("Buscar por NP"):
         st.session_state.modo_busqueda = "NP"
 
+campo = st.session_state.modo_busqueda
+
 # =========================
 # URLS
 # =========================
@@ -41,7 +46,7 @@ URL_SUPPLY = st.secrets["URL_SUPPLY"]
 URL_REFRESH = st.secrets["URL_REFRESH"]
 
 # =========================
-# CARGA DE DATOS
+# FUNCIONES
 # =========================
 @st.cache_data
 def cargar_datos(url):
@@ -56,19 +61,16 @@ def cargar_datos(url):
             df[c] = pd.to_datetime(df[c], errors="coerce")
 
     columnas_finales = [
-        'TYPE', 'VIA', 'CHANNEL', 'REFERENCE', 'CLIENT', 'NP',
+        'TYPE', 'VIA', 'SOLICITED', 'REFERENCE', 'CLIENT', 'NP',
         'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS', 
         'INVOICE', 'ETD', 'SHIP_DATE', 'ARRIVAL_DATE', 'ENTRY_DATE',
-        'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY'
+        'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY', 'CHANNEL'
     ]
 
     columnas_existentes = [c for c in columnas_finales if c in df.columns]
 
     return df[columnas_existentes]
 
-# =========================
-# VALIDACIÓN
-# =========================
 def validar_estado_pedidos(df):
 
     for col in ["VIA", "STATUS", "INVOICE"]:
@@ -119,17 +121,6 @@ def validar_estado_pedidos(df):
 
     return df
 
-# =========================
-# INPUT DINÁMICO
-# =========================
-campo = st.session_state.modo_busqueda
-
-valor = st.text_input(f"Ingrese {campo}:")
-buscar = st.button("Buscar")
-
-# =========================
-# PROCESAMIENTO
-# =========================
 
 def convertir_a_excel(df):
     output = BytesIO()
@@ -137,12 +128,21 @@ def convertir_a_excel(df):
         df.to_excel(writer, index=False, sheet_name='Reporte')
     return output.getvalue()
 
+
+# =========================
+# INPUT
+# =========================
+valor = st.text_input(f"Ingrese {campo}:")
+buscar = st.button("Buscar")
+
+# =========================
+# PROCESAMIENTO
+# =========================
 if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
 
-            # Filtro robusto por canal
             if 'CHANNEL' in df1.columns:
                 df1 = df1[df1['CHANNEL'] == 'BOL02']
 
@@ -156,32 +156,32 @@ if buscar and valor:
                 df_filtrado = pd.DataFrame()
 
             if not df_filtrado.empty:
-
                 df_filtrado = validar_estado_pedidos(df_filtrado)
 
-                # 👉 Copia para exportar (mantiene fechas reales)
-                df_export = df_filtrado.copy()
-
-                # 👉 Formato solo para visualización
-                df_filtrado["ETA_LP"] = df_filtrado["ETA_LP"].dt.strftime("%Y/%m/%d")
-
-                st.subheader(f"Resultados para {campo}: {valor}")
-                st.dataframe(df_filtrado.drop(columns=["NP_ACCEPTED"], errors="ignore"))
-
-                # =========================
-                # BOTÓN DESCARGA
-                # =========================
-                excel_data = convertir_a_excel(df_export)
-
-                st.download_button(
-                    label="Descargar Excel",
-                    data=excel_data,
-                    file_name="tracking_pedidos.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-
+                # Guardar resultado en sesión
+                st.session_state.df_resultado = df_filtrado.copy()
             else:
-                st.warning("No se encontraron resultados.")
+                st.session_state.df_resultado = None
 
         except Exception as e:
             st.error(f"Error: {e}")
+
+# =========================
+# DISPLAY
+# =========================
+if st.session_state.df_resultado is not None:
+
+    df_display = st.session_state.df_resultado.copy()
+    df_display["ETA_LP"] = df_display["ETA_LP"].dt.strftime("%Y/%m/%d")
+
+    st.subheader(f"Resultados para {campo}: {valor}")
+    st.dataframe(df_display.drop(columns=["NP_ACCEPTED"], errors="ignore"))
+
+    excel_data = convertir_a_excel(st.session_state.df_resultado)
+
+    st.download_button(
+        label="Descargar Excel",
+        data=excel_data,
+        file_name="tracking_pedidos.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
