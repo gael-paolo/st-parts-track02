@@ -1,178 +1,158 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
-import io
+import numpy as np
 
-st.set_page_config(page_title="Tracking BOL02", layout="wide")
-st.title("Tracking BOL02")
+# =========================
+# CONFIGURACIÓN
+# =========================
+st.set_page_config(page_title="Tracking Orders BOL02", layout="wide")
 
-URL_BOL2_TRACKING = st.secrets["URL_BOL2_TRACKING"]
+st.title("Tracking Orders BOL02 ~ Nissan Parts")
+st.header("Consulta Pedidos Reservados")
 
-# ======================================================
-# CARGA DE DATOS (cache invalidado por versión)
-# ======================================================
-@st.cache_data(ttl=300)
-def cargar_datos_desde_url(url, version="v3"):
+# =========================
+# SESSION STATE
+# =========================
+if "modo_busqueda" not in st.session_state:
+    st.session_state.modo_busqueda = "REFERENCE"
+
+# =========================
+# BOTONES DE SELECCIÓN
+# =========================
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("Buscar por Referencia"):
+        st.session_state.modo_busqueda = "REFERENCE"
+
+with col2:
+    if st.button("Buscar por ATENTION_INVOICE"):
+        st.session_state.modo_busqueda = "ATENTION_INVOICE"
+
+with col3:
+    if st.button("Buscar por NP"):
+        st.session_state.modo_busqueda = "NP"
+
+# =========================
+# URLS
+# =========================
+URL_SUPPLY = st.secrets["URL_SUPPLY"]
+URL_REFRESH = st.secrets["URL_REFRESH"]
+
+# =========================
+# CARGA DE DATOS
+# =========================
+@st.cache_data
+def cargar_datos(url):
     df = pd.read_csv(url)
 
-    df = df.replace(
-        ['', 'nan', 'NaN', 'None', 'N/A', 'n/a', '(en blanco)'],
-        pd.NA
-    )
+    df["REFERENCE"] = df["REFERENCE"].astype(str)
+    df["INVOICE"] = df["INVOICE"].replace(["", "(en blanco)", "No Invoice"], pd.NA)
 
-    date_columns = ['ETD', 'SHIP_DATE', 'FECHA_INGRESO', 'FECHA_SOLICITADO']
-    for col in date_columns:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+    fechas = ["DATE_SOLICITED", "SHIP_DATE", "ARRIVAL_DATE", "ENTRY_DATE", "ETD", "ATENTION_DATE"]
+    for c in fechas:
+        if c in df.columns:
+            df[c] = pd.to_datetime(df[c], errors="coerce")
 
-    text_columns = [
-        'ORIGEN', 'NP', 'NP_ACEPTADA', 'DESCRIPCION', 'MOD',
-        'STATUS', 'CLIENTE', 'SOLICITADO', 'REFERENCIA', 'ESTADO'
+    columnas_finales = [
+        'TYPE', 'VIA', 'SOLICITED', 'REFERENCE', 'CLIENT', 'NP',
+        'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS', 
+        'INVOICE', 'ETD', 'SHIP_DATE', 'ARRIVAL_DATE', 'ENTRY_DATE',
+        'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY'
     ]
-    for col in text_columns:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().replace('nan', pd.NA)
+
+    columnas_existentes = [c for c in columnas_finales if c in df.columns]
+
+    return df[columnas_existentes]
+
+# =========================
+# VALIDACIÓN
+# =========================
+def validar_estado_pedidos(df):
+
+    for col in ["VIA", "STATUS", "INVOICE"]:
+        if col not in df.columns:
+            df[col] = pd.NA
+
+    df["STATUS"] = df["STATUS"].fillna("")
+    df["INVOICE"] = df["INVOICE"].replace(["", "(en blanco)", "No Invoice"], pd.NA)
+
+    df["ENTRY_DATE"] = pd.to_datetime(df["ENTRY_DATE"], errors="coerce")
+    df.loc[df["ENTRY_DATE"] == pd.Timestamp("1900-01-01"), "ENTRY_DATE"] = pd.NaT
+
+    cond_air = df["VIA"] == "AIR"
+    cond_invoice = df["INVOICE"].notna()
+
+    df["ETA_LP"] = pd.NaT
+
+    df.loc[cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=30)
+    df.loc[cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=45)
+    df.loc[~cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=50)
+    df.loc[~cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=50)
+
+    now = pd.Timestamp.now()
+
+    condiciones = [
+        (df["STATUS"].isin(["C", "U"])),
+        (df["STATUS"] == "Pending"),
+        (df["ENTRY_DATE"].notna()),
+        (df["ARRIVAL_DATE"].notna()),
+        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].isna()),
+        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].notna()),
+        (df["INVOICE"].isna() & (df["STATUS"] == "B/O")),
+        (df["ARRIVAL_DATE"].isna() & df["INVOICE"].notna())
+    ]
+
+    resultados = [
+        "Cancelado y no será atendido.",
+        "Pendiente de Colocar al Proveedor",
+        "Pieza ingresada y lista para disposición",
+        "La Pieza ha arribado al almacén.",
+        "Pedido sin Atención y Retrasado",
+        "Pedido Retrasado en tránsito",
+        "Estado en Back Order, posible retraso.",
+        "La Pieza se encuentra en tránsito."
+    ]
+
+    df["ANALISIS"] = np.select(condiciones, resultados, default="Sin información suficiente.")
 
     return df
 
-# ======================================================
-# PREPARACIÓN Y FILTRO
-# ======================================================
-def preparar_datos(df):
-    df_clean = df.copy()
-    for col in ['REFERENCIA', 'NP', 'CLIENTE']:
-        if col in df_clean.columns:
-            df_clean[col] = df_clean[col].fillna('').astype(str).str.strip()
-    return df_clean
+# =========================
+# INPUT DINÁMICO
+# =========================
+campo = st.session_state.modo_busqueda
 
-def filtrar_datos(df, referencia, np, cliente):
-    if referencia:
-        df = df[df['REFERENCIA'].str.contains(referencia, case=False, na=False)]
-    if np:
-        df = df[df['NP'].str.contains(np, case=False, na=False)]
-    if cliente:
-        df = df[df['CLIENTE'].str.contains(cliente, case=False, na=False)]
-    return df
+valor = st.text_input(f"Ingrese {campo}:")
+buscar = st.button("Buscar")
 
-# ======================================================
-# FORMATEO DE FECHAS
-# ======================================================
-def formatear_fechas_df(df):
-    df_display = df.copy()
+# =========================
+# PROCESAMIENTO
+# =========================
+if buscar and valor:
+    with st.spinner("Procesando..."):
+        try:
+            df1 = cargar_datos(URL_SUPPLY)
+            df2 = cargar_datos(URL_REFRESH)
 
-    def format_fecha_ingreso(x):
-        if pd.isnull(x):
-            return "Pendiente"
-        fecha = pd.to_datetime(x, errors="coerce")
-        if pd.isnull(fecha):
-            return "Pendiente"
-        if fecha.date() == pd.Timestamp("1900-01-01").date():
-            return "Pendiente"
-        return fecha.strftime("%d/%m/%Y")
+            df = pd.concat([df1, df2], ignore_index=True)
 
-    for col in ['ETD', 'SHIP_DATE', 'FECHA_SOLICITADO']:
-        if col in df_display.columns:
-            df_display[col] = df_display[col].apply(
-                lambda x: pd.to_datetime(x).strftime("%d/%m/%Y") if pd.notnull(x) else ""
-            )
-
-    if 'FECHA_INGRESO' in df_display.columns:
-        df_display['FECHA_INGRESO'] = df_display['FECHA_INGRESO'].apply(format_fecha_ingreso)
-
-    return df_display
-
-# ======================================================
-# EXPORTACIONES
-# ======================================================
-def convertir_csv(df):
-    return df.to_csv(index=False, encoding="utf-8-sig")
-
-def convertir_xlsx(df):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df.to_excel(writer, index=False, sheet_name="Resultados")
-    return output.getvalue()
-
-# ======================================================
-# APP
-# ======================================================
-def main():
-    with st.spinner("Cargando datos..."):
-        df = cargar_datos_desde_url(URL_BOL2_TRACKING, version="v3")
-
-    if df.empty:
-        st.error("No se pudieron cargar los datos.")
-        return
-
-    st.sidebar.header("📊 Información")
-    st.sidebar.write(f"Total de registros: {len(df)}")
-    st.sidebar.write(f"Referencias únicas: {df['REFERENCIA'].nunique()}")
-    st.sidebar.write(f"NPs únicos: {df['NP'].nunique()}")
-    st.sidebar.write(f"Clientes únicos: {df['CLIENTE'].nunique()}")
-
-    st.header("🔍 Búsqueda de Pedidos")
-    col1, col2, col3 = st.columns(3)
-
-    referencia = col1.text_input("Referencia")
-    np = col2.text_input("NP")
-    cliente = col3.text_input("Cliente")
-
-    buscar = st.button("🔎 Buscar", type="primary", use_container_width=True)
-
-    if buscar:
-        if not any([referencia.strip(), np.strip(), cliente.strip()]):
-            st.warning("Debes ingresar al menos un criterio de búsqueda")
-            st.session_state.mostrar_resultados = False
-        else:
-            df_filtrado = filtrar_datos(
-                preparar_datos(df),
-                referencia.strip(),
-                np.strip(),
-                cliente.strip()
-            )
-
-            if df_filtrado.empty:
-                st.warning("No se encontraron resultados")
-                st.session_state.mostrar_resultados = False
+            if campo in df.columns:
+                df_filtrado = df[df[campo].astype(str) == valor].copy()
             else:
-                st.session_state.resultados = df_filtrado
-                st.session_state.mostrar_resultados = True
-                st.success(f"Se encontraron {len(df_filtrado)} registros")
+                df_filtrado = pd.DataFrame()
 
-    if st.session_state.get("mostrar_resultados", False):
-        resultados = st.session_state.resultados
-        resultados_display = formatear_fechas_df(resultados)
+            if not df_filtrado.empty:
 
-        st.header("📋 Resultados")
-        st.dataframe(
-            resultados_display,
-            use_container_width=True,
-            hide_index=True
-        )
+                df_filtrado = validar_estado_pedidos(df_filtrado)
 
-        if 0 < len(resultados) < len(df):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            col_dl1, col_dl2 = st.columns(2)
+                df_filtrado["ETA_LP"] = df_filtrado["ETA_LP"].dt.strftime("%Y/%m/%d")
 
-            with col_dl1:
-                st.download_button(
-                    "📄 Descargar CSV",
-                    convertir_csv(resultados),
-                    f"resultados_{timestamp}.csv",
-                    "text/csv"
-                )
+                st.subheader(f"Resultados para {campo}: {valor}")
+                st.dataframe(df_filtrado.drop(columns=["NP_ACCEPTED"], errors="ignore"))
 
-            with col_dl2:
-                st.download_button(
-                    "📊 Descargar XLSX",
-                    convertir_xlsx(resultados_display),
-                    f"resultados_{timestamp}.xlsx",
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+            else:
+                st.warning("No se encontraron resultados.")
 
-    st.divider()
-    st.caption("© 2026 Tracking GJ")
-    st.caption(f"Última actualización: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-
-if __name__ == "__main__":
-    main()
+        except Exception as e:
+            st.error(f"Error: {e}")
