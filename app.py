@@ -133,6 +133,7 @@ if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
+            df1 = df1[df1['CHANNEL']=='BOL02']
             df2 = cargar_datos(URL_REFRESH)
 
             df = pd.concat([df1, df2], ignore_index=True)
