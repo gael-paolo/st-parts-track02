@@ -178,7 +178,6 @@ if st.session_state.df_resultado is not None:
     df_display["ETA_LP"] = df_display["ETA_LP"].dt.strftime("%Y/%m/%d")
 
     st.subheader(f"Resultados para {campo}: {valor}")
-    st.dataframe(df_display.drop(columns=["NP_ACCEPTED"], errors="ignore"))
 
     excel_data = convertir_a_excel(st.session_state.df_resultado)
 
