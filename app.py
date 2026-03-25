@@ -144,11 +144,14 @@ if buscar and valor:
             df1 = cargar_datos(URL_SUPPLY)
 
             if 'CHANNEL' in df1.columns:
-                df1 = df1[df1['CHANNEL'] == 'BOL02']
+                df1 = df1[
+                    (df1['CHANNEL'] == 'BOL02') &
+                    (df1['DATE_SOLICITED'].notna()) &
+                    (df1['DATE_SOLICITED'] >= pd.Timestamp('2026-01-01'))]
 
             df2 = cargar_datos(URL_REFRESH)
 
-            df = pd.concat([df1, df2], ignore_index=True)
+            df = pd.concat([df2, df1], ignore_index=True)
 
             if campo in df.columns:
                 df_filtrado = df[df[campo].astype(str) == valor].copy()
