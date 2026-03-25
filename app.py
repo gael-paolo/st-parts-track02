@@ -154,7 +154,11 @@ if buscar and valor:
             df = pd.concat([df2, df1], ignore_index=True)
 
             if campo in df.columns:
-                df_filtrado = df[df[campo].astype(str) == valor].copy()
+                df_filtrado = df[df[campo]
+                                 .astype(str)
+                                 .str.strip()
+                                 .str.upper()
+                                 == valor.strip().upper()].copy()
             else:
                 df_filtrado = pd.DataFrame()
 
