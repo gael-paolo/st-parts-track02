@@ -52,9 +52,18 @@ URL_REFRESH = st.secrets["URL_REFRESH"]
 def cargar_datos(url):
     df = pd.read_csv(url)
 
-    df["REFERENCE"] = df["REFERENCE"].astype(str)
-    df["INVOICE"] = df["INVOICE"].replace(["", "(en blanco)", "No Invoice"], pd.NA)
+    # Normalización clave
+    for col in ["REFERENCE", "ATENTION_INVOICE", "NP", "INVOICE"]:
+        if col in df.columns:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .replace(["", "NAN", "NONE"], pd.NA)
+            )
 
+    # Fechas
     fechas = ["DATE_SOLICITED", "SHIP_DATE", "ARRIVAL_DATE", "ENTRY_DATE", "ETD", "ATENTION_DATE"]
     for c in fechas:
         if c in df.columns:
@@ -71,6 +80,7 @@ def cargar_datos(url):
 
     return df[columnas_existentes]
 
+
 def validar_estado_pedidos(df):
 
     for col in ["VIA", "STATUS", "INVOICE"]:
@@ -78,7 +88,7 @@ def validar_estado_pedidos(df):
             df[col] = pd.NA
 
     df["STATUS"] = df["STATUS"].fillna("")
-    df["INVOICE"] = df["INVOICE"].replace(["", "(en blanco)", "No Invoice"], pd.NA)
+    df["INVOICE"] = df["INVOICE"].replace(["", "(EN BLANCO)", "NO INVOICE"], pd.NA)
 
     df["ENTRY_DATE"] = pd.to_datetime(df["ENTRY_DATE"], errors="coerce")
     df.loc[df["ENTRY_DATE"] == pd.Timestamp("1900-01-01"), "ENTRY_DATE"] = pd.NaT
@@ -97,7 +107,7 @@ def validar_estado_pedidos(df):
 
     condiciones = [
         (df["STATUS"].isin(["C", "U"])),
-        (df["STATUS"] == "Pending"),
+        (df["STATUS"] == "PENDING"),
         (df["ENTRY_DATE"].notna()),
         (df["ARRIVAL_DATE"].notna()),
         (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].isna()),
@@ -142,35 +152,46 @@ if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
-            st.write("df1 shape antes filtro:", df1.shape)
+            st.write("df1 antes filtro:", df1.shape)
+
             if 'CHANNEL' in df1.columns:
                 df1 = df1[
                     (df1['CHANNEL'] == 'BOL02') &
                     (df1['DATE_SOLICITED'].notna()) &
-                    (df1['DATE_SOLICITED'] >= pd.Timestamp('2026-01-01'))]
-            st.write("df1 shape después filtro:", df1.shape)
+                    (df1['DATE_SOLICITED'] >= pd.Timestamp('2025-01-01'))
+                ]
+
+            st.write("df1 después filtro:", df1.shape)
 
             df2 = cargar_datos(URL_REFRESH)
-            st.write("df2 shape después filtro:", df2.shape)
+            st.write("df2:", df2.shape)
 
             df = pd.concat([df2, df1], ignore_index=True)
+            st.write("df total:", df.shape)
+
+            # DEBUG CLAVE
+            st.write("Columnas disponibles:", df.columns.tolist())
 
             if campo in df.columns:
-                df_filtrado = df[df[campo]
-                                 .astype(str)
-                                 .str.strip()
-                                 .str.upper()
-                                 == valor.strip().upper()].copy()
+                st.write(f"Valores únicos en {campo}:", df[campo].dropna().unique()[:20])
+
+                df_filtrado = df[
+                    df[campo]
+                    .astype(str)
+                    .str.contains(valor.strip(), case=False, na=False)
+                ].copy()
             else:
+                st.error(f"La columna {campo} no existe")
                 df_filtrado = pd.DataFrame()
+
+            st.write("Filas encontradas:", df_filtrado.shape[0])
 
             if not df_filtrado.empty:
                 df_filtrado = validar_estado_pedidos(df_filtrado)
-
-                # Guardar resultado en sesión
                 st.session_state.df_resultado = df_filtrado.copy()
             else:
                 st.session_state.df_resultado = None
+                st.warning("No se encontraron resultados")
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -181,9 +202,16 @@ if buscar and valor:
 if st.session_state.df_resultado is not None:
 
     df_display = st.session_state.df_resultado.copy()
-    df_display["ETA_LP"] = df_display["ETA_LP"].dt.strftime("%Y/%m/%d")
+
+    if "ETA_LP" in df_display.columns:
+        df_display["ETA_LP"] = df_display["ETA_LP"].dt.strftime("%Y/%m/%d")
 
     st.subheader(f"Resultados para {campo}: {valor}")
+
+    st.write("Preview:")
+    st.dataframe(df_display.head(50))
+
+    st.write("Shape final:", df_display.shape)
 
     excel_data = convertir_a_excel(st.session_state.df_resultado)
 
