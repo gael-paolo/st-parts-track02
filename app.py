@@ -52,7 +52,7 @@ URL_REFRESH = st.secrets["URL_REFRESH"]
 def cargar_datos(url):
     df = pd.read_csv(url)
 
-    # Normalización clave
+    # Normalización
     for col in ["REFERENCE", "ATENTION_INVOICE", "NP", "INVOICE"]:
         if col in df.columns:
             df[col] = (
@@ -152,7 +152,6 @@ if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
-            st.write("df1 antes filtro:", df1.shape)
 
             if 'CHANNEL' in df1.columns:
                 df1 = df1[
@@ -161,19 +160,11 @@ if buscar and valor:
                     (df1['DATE_SOLICITED'] >= pd.Timestamp('2025-01-01'))
                 ]
 
-            st.write("df1 después filtro:", df1.shape)
-
             df2 = cargar_datos(URL_REFRESH)
-            st.write("df2:", df2.shape)
 
             df = pd.concat([df2, df1], ignore_index=True)
-            st.write("df total:", df.shape)
-
-            # DEBUG CLAVE
-            st.write("Columnas disponibles:", df.columns.tolist())
 
             if campo in df.columns:
-                st.write(f"Valores únicos en {campo}:", df[campo].dropna().unique()[:20])
 
                 df_filtrado = df[
                     df[campo]
@@ -210,8 +201,6 @@ if st.session_state.df_resultado is not None:
 
     st.write("Preview:")
     st.dataframe(df_display.head(50))
-
-    st.write("Shape final:", df_display.shape)
 
     excel_data = convertir_a_excel(st.session_state.df_resultado)
 
