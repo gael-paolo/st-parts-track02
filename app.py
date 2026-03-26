@@ -142,14 +142,16 @@ if buscar and valor:
     with st.spinner("Procesando..."):
         try:
             df1 = cargar_datos(URL_SUPPLY)
-
+            st.write("df1 shape antes filtro:", df1.shape)
             if 'CHANNEL' in df1.columns:
                 df1 = df1[
                     (df1['CHANNEL'] == 'BOL02') &
                     (df1['DATE_SOLICITED'].notna()) &
                     (df1['DATE_SOLICITED'] >= pd.Timestamp('2026-01-01'))]
+            st.write("df1 shape después filtro:", df1.shape)
 
             df2 = cargar_datos(URL_REFRESH)
+            st.write("df2 shape después filtro:", df2.shape)
 
             df = pd.concat([df2, df1], ignore_index=True)
 
