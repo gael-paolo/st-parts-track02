@@ -50,7 +50,13 @@ URL_REFRESH = st.secrets["URL_REFRESH"]
 # =========================
 @st.cache_data
 def cargar_datos(url):
-    df = pd.read_csv(url)
+
+    df = pd.read_csv(
+    url,
+    dtype=str,
+    sep=",",
+    engine="python",
+    on_bad_lines="warn")
 
     # Normalización
     for col in ["REFERENCE", "ATENTION_INVOICE", "NP", "INVOICE"]:
