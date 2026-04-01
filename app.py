@@ -130,8 +130,8 @@ def validar_estado_pedidos(df):
     condiciones = [
         (df["STATUS"].isin(["C", "U"])),
         (df["STATUS"] == "PENDING"),
-        (df["ETA_LP"].isna()),
         (df["ATENTION_DATE"].notna()),
+        (df["ETA_LP"].isna()),
         (df["ENTRY_DATE"].notna()),
         (df["ARRIVAL_DATE"].notna()),
         (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].isna()),
@@ -143,6 +143,7 @@ def validar_estado_pedidos(df):
     resultados = [
         "Cancelado y no será atendido.",
         "Pendiente de Colocar al Proveedor",
+        "Pedido enviado a destino",
         "En Preparación del NSC",
         "Pedido enviado a destino",
         "Pieza ingresada y lista para disposición",
