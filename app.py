@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import time
 
 # =========================
 # CONFIGURACIÓN
@@ -20,10 +21,13 @@ if "modo_busqueda" not in st.session_state:
 if "df_resultado" not in st.session_state:
     st.session_state.df_resultado = None
 
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
 # =========================
-# BOTONES DE MODO
+# BOTONES DE CONTROL
 # =========================
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     if st.button("Buscar por Referencia"):
@@ -37,6 +41,12 @@ with col3:
     if st.button("Buscar por NP"):
         st.session_state.modo_busqueda = "NP"
 
+with col4:
+    if st.button("🔄 Refrescar datos"):
+        st.cache_data.clear()
+        st.session_state.last_refresh = time.time()
+        st.success("Cache limpiado. Se recargarán datos nuevos.")
+
 campo = st.session_state.modo_busqueda
 
 # =========================
@@ -48,15 +58,15 @@ URL_REFRESH = st.secrets["URL_REFRESH"]
 # =========================
 # FUNCIONES
 # =========================
-@st.cache_data
-def cargar_datos(url):
-
+@st.cache_data(ttl=300)
+def cargar_datos(url, refresh_key):
     df = pd.read_csv(
-    url,
-    dtype=str,
-    sep=",",
-    engine="python",
-    on_bad_lines="warn")
+        url,
+        dtype=str,
+        sep=",",
+        engine="python",
+        on_bad_lines="warn"
+    )
 
     # Normalización
     for col in ["REFERENCE", "ATENTION_INVOICE", "NP", "INVOICE"]:
@@ -77,7 +87,7 @@ def cargar_datos(url):
 
     columnas_finales = [
         'TYPE', 'VIA', 'SOLICITED', 'REFERENCE', 'CLIENT', 'NP',
-        'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS', 
+        'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS',
         'INVOICE', 'ETD', 'SHIP_DATE', 'ARRIVAL_DATE', 'ENTRY_DATE',
         'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY', 'CHANNEL'
     ]
@@ -88,7 +98,6 @@ def cargar_datos(url):
 
 
 def validar_estado_pedidos(df):
-
     for col in ["VIA", "STATUS", "INVOICE"]:
         if col not in df.columns:
             df[col] = pd.NA
@@ -114,7 +123,7 @@ def validar_estado_pedidos(df):
     condiciones = [
         (df["STATUS"].isin(["C", "U"])),
         (df["STATUS"] == "PENDING"),
-        (df["ATENTION_DATE"].notna()),        
+        (df["ATENTION_DATE"].notna()),
         (df["ENTRY_DATE"].notna()),
         (df["ARRIVAL_DATE"].notna()),
         (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].isna()),
@@ -159,7 +168,10 @@ buscar = st.button("Buscar")
 if buscar and valor:
     with st.spinner("Procesando..."):
         try:
-            df1 = cargar_datos(URL_SUPPLY)
+            refresh_key = st.session_state.last_refresh
+
+            df1 = cargar_datos(URL_SUPPLY, refresh_key)
+            df2 = cargar_datos(URL_REFRESH, refresh_key)
 
             if 'CHANNEL' in df1.columns:
                 df1 = df1[
@@ -168,12 +180,9 @@ if buscar and valor:
                     (df1['DATE_SOLICITED'] >= pd.Timestamp('2025-01-01'))
                 ]
 
-            df2 = cargar_datos(URL_REFRESH)
-
             df = pd.concat([df2, df1], ignore_index=True)
 
             if campo in df.columns:
-
                 df_filtrado = df[
                     df[campo]
                     .astype(str)
@@ -187,7 +196,7 @@ if buscar and valor:
 
             if not df_filtrado.empty:
                 df_filtrado = validar_estado_pedidos(df_filtrado)
-                st.session_state.df_resultado = df_filtrado.copy()
+                st.session_state.df_resultado = df_filtrado
             else:
                 st.session_state.df_resultado = None
                 st.warning("No se encontraron resultados")
@@ -207,8 +216,7 @@ if st.session_state.df_resultado is not None:
 
     st.subheader(f"Resultados para {campo}: {valor}")
 
-    st.write("Preview:")
-    st.dataframe(df_display.head(50))
+    st.dataframe(df_display.head(50), use_container_width=True)
 
     excel_data = convertir_a_excel(st.session_state.df_resultado)
 
