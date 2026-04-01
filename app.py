@@ -108,15 +108,22 @@ def validar_estado_pedidos(df):
     df["ENTRY_DATE"] = pd.to_datetime(df["ENTRY_DATE"], errors="coerce")
     df.loc[df["ENTRY_DATE"] == pd.Timestamp("1900-01-01"), "ENTRY_DATE"] = pd.NaT
 
+    # =========================
+    # CÁLCULO ETA_LP
+    # =========================
+    df["ETA_LP"] = pd.NaT
+
+    # 🔴 Regla prioritaria: VIA = NSC → vacío
+    cond_nsc = df["VIA"] == "NSC"
+    
     cond_air = df["VIA"] == "AIR"
     cond_invoice = df["INVOICE"].notna()
 
-    df["ETA_LP"] = pd.NaT
-
-    df.loc[cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=30)
-    df.loc[cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=45)
-    df.loc[~cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=50)
-    df.loc[~cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=50)
+    # Cálculos normales SOLO si no es NSC
+    df.loc[~cond_nsc & cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=30)
+    df.loc[~cond_nsc & cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=45)
+    df.loc[~cond_nsc & ~cond_air & cond_invoice & df["SHIP_DATE"].notna(), "ETA_LP"] = df["SHIP_DATE"] + pd.Timedelta(days=50)
+    df.loc[~cond_nsc & ~cond_air & ~cond_invoice & df["ETD"].notna(), "ETA_LP"] = df["ETD"] + pd.Timedelta(days=50)
 
     now = pd.Timestamp.now()
 
