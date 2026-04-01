@@ -141,11 +141,10 @@ def validar_estado_pedidos(df):
     ]
 
     resultados = [
-        "Cancelado y no será atendido.",
+        "Cancelado y no será atendido",
         "Pendiente de Colocar al Proveedor",
         "Pedido enviado a destino",
         "En Preparación del NSC",
-        "Pedido enviado a destino",
         "Pieza ingresada y lista para disposición",
         "La Pieza ha arribado al almacén.",
         "Pedido sin Atención y Retrasado",
