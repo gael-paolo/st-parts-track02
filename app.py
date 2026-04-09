@@ -89,7 +89,7 @@ def cargar_datos(url, refresh_key):
         'TYPE', 'VIA', 'SOLICITED', 'REFERENCE', 'CLIENT', 'NP',
         'NP_ACCEPTED', 'DATE_SOLICITED', 'DESCRIPTION', 'STATUS',
         'INVOICE', 'ETD', 'SHIP_DATE', 'ARRIVAL_DATE', 'ENTRY_DATE',
-        'ATENTION_INVOICE', 'ATENTION_DATE', 'QTY', 'CHANNEL'
+        'ATENTION_INVOICE', 'ATENTION_DATE', 'RESERVED', 'CHANNEL'
     ]
 
     columnas_existentes = [c for c in columnas_finales if c in df.columns]
