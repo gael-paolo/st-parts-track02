@@ -129,7 +129,7 @@ def validar_estado_pedidos(df):
 
     condiciones = [
         (df["STATUS"].isin(["C", "U"])),
-        (df["STATUS"] == "PENDING"),
+        (df["STATUS"] == "Pending"),
         (df["ATENTION_DATE"].notna()),
         (df["ETA_LP"].isna()),
         (df["ENTRY_DATE"].notna()),
