@@ -134,8 +134,8 @@ def validar_estado_pedidos(df):
         (df["ETA_LP"].isna()),
         (df["ENTRY_DATE"].notna()),
         (df["ARRIVAL_DATE"].notna()),
-        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].isna()),
-        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["INVOICE"].notna()),
+        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["SHIP_DATE"].isna()),
+        (df["ARRIVAL_DATE"].isna() & df["ETA_LP"].notna() & (df["ETA_LP"] < now) & df["SHIP_DATE"].notna()),
         (df["INVOICE"].isna() & (df["STATUS"] == "B/O")),
         (df["ARRIVAL_DATE"].isna() & df["INVOICE"].notna())
     ]
